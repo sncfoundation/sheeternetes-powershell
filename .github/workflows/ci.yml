@@ -1,0 +1,36 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Parse check
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$PWD/Sheeternetes.psm1", [ref]$null, [ref]$errors) | Out-Null
+          if ($errors) { $errors | Format-List; exit 1 }
+      - name: Module imports and exports its cmdlets
+        shell: pwsh
+        run: |
+          Import-Module ./Sheeternetes.psm1 -Force
+          $cmds = (Get-Command -Module Sheeternetes).Name
+          $cmds
+          foreach ($c in 'Get-SheetPod', 'Get-SheetNode', 'Set-SheetScale', 'Invoke-SheetApply') {
+            if ($cmds -notcontains $c) { throw "missing $c" }
+          }
+      - name: PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          $issues = Invoke-ScriptAnalyzer -Path ./Sheeternetes.psm1 -Severity Warning, Error
+          $issues | Format-Table -AutoSize
+          if ($issues | Where-Object Severity -eq 'Error') { exit 1 }
